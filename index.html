@@ -1932,7 +1932,8 @@ function sendToPunish(stId) {
   const st = getStudents().find(s => String(s.id) === String(stId));
   if (!st) return;
   if (!confirm(`Chuyển sang tab Phạt và tạo phiếu cho "${st.name}"?`)) return;
-  showTab('phat', document.querySelectorAll('.nav-btn')[5]);
+  showGroup('hoc-tap');   // ✅ chuyển nhóm
+  clickSubTab('phat', document.querySelector('#navSubTabs .nav-btn[data-tab="phat"]'));  // ✅ chuyển sub-tab
   setTimeout(() => {
     document.querySelectorAll('input[name="ptStudentCheck"]').forEach(cb => cb.checked = String(cb.value) === String(stId));
     document.getElementById('ptType').value = 'nhac_nho';
@@ -1949,7 +1950,8 @@ function sendToLabor(punishId) {
   if (!canEdit()) return;
   const p = getPunishments().find(x => String(x.id) === String(punishId));
   if (!p) return;
-  showTab('laodong', document.querySelectorAll('.nav-btn')[4]);
+  showGroup('quan-ly');   // ✅ chuyển nhóm
+  clickSubTab('laodong', document.querySelector('#navSubTabs .nav-btn[data-tab="laodong"]'));  // ✅ chuyển sub-tab
   setTimeout(() => {
     document.querySelectorAll('input[name="ldDutyCheck"]').forEach(cb => cb.checked = String(cb.value) === String(p.stId));
     document.getElementById('ldDutyTask').value = 'Vệ sinh theo phiếu phạt: ' + p.reason;
@@ -1958,7 +1960,7 @@ function sendToLabor(punishId) {
     toast('🧹 Đã chuyển, kiểm tra và bấm Tạo Nhiệm Vụ', '#f59e0b');
   }, 200);
 }
-
+  
 function openEditLog(id) {
   if (!canEdit()) { toast('⚠️ Không có quyền!', '#ef4444'); return; }
   const l = getLogs().find(x => String(x.id) === String(id));
