@@ -375,7 +375,42 @@ body.dark .nav-group-btn.active{background:linear-gradient(135deg,#2563eb,#1e40a
     </div>
   </div>
 </div>
+  
+<div id="setupScreen" style="display:none;position:fixed;inset:0;background:linear-gradient(135deg,#1e3a8a,#2563eb,#7c3aed);z-index:99998;align-items:center;justify-content:center;padding:20px;overflow-y:auto;">
+  <div class="auth-card" style="max-width:520px;">
+    <div style="font-size:44px;margin-bottom:8px;">🏫</div>
+    <h2>Chào mừng!</h2>
+    <p class="sub">Bạn chưa có lớp nào. Hãy tạo lớp mới hoặc tham gia lớp có sẵn.</p>
 
+    <div id="setupMsg" class="auth-msg"></div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px;">
+      <button id="tabCreate" onclick="switchSetupTab('create')" class="btn-act" style="flex:1;padding:12px;background:#10b981;">➕ Tạo lớp mới</button>
+      <button id="tabJoin" onclick="switchSetupTab('join')" class="btn-act" style="flex:1;padding:12px;background:#f59e0b;">🔗 Tham gia lớp</button>
+    </div>
+
+    <!-- PANEL TẠO LỚP -->
+    <div id="setupCreatePanel" style="text-align:left;">
+      <div class="form-group"><label>Tên lớp *</label><input type="text" id="setupClassName" placeholder="VD: Lớp 10A1"></div>
+      <div class="form-group"><label>Tên trường</label><input type="text" id="setupSchool" placeholder="VD: THPT Nguyễn Trãi"></div>
+      <div class="form-group"><label>GVCN</label><input type="text" id="setupTeacher" placeholder="VD: Nguyễn Văn A"></div>
+      <div class="form-group"><label>Năm học</label><input type="text" id="setupYear" placeholder="2025-2026"></div>
+      <button class="btn-auth" onclick="createNewClassSetup()" style="background:linear-gradient(135deg,#10b981,#059669);">🚀 TẠO LỚP MỚI</button>
+    </div>
+
+    <!-- PANEL THAM GIA -->
+    <div id="setupJoinPanel" style="display:none;text-align:left;">
+      <div class="form-group"><label>Mã lớp (Class ID)</label>
+        <input type="text" id="setupJoinClassId" placeholder="VD: LOP001" style="text-transform:uppercase;letter-spacing:2px;text-align:center;font-weight:bold;">
+      </div>
+      <p style="font-size:12px;color:#64748b;text-align:center;margin-bottom:10px;">Nhập mã lớp do GVCN hoặc lớp trưởng cung cấp</p>
+      <button class="btn-auth" onclick="joinExistingClass()" style="background:linear-gradient(135deg,#f59e0b,#d97706);">🔗 THAM GIA LỚP</button>
+    </div>
+
+    <button class="btn-act btn-danger" style="width:100%;margin-top:16px;padding:12px;" onclick="logout()">🚪 Đăng xuất</button>
+  </div>
+</div>
+  
 <div id="toast"></div>
 <button id="themeToggle" onclick="toggleTheme()">🌙</button>
 <button id="micBig" onclick="toggleBigMic()" title="Nhập bằng giọng nói">🎤</button>
@@ -1369,27 +1404,159 @@ async function loadClassFromCloud(classId) {
 }
 
 auth.onAuthStateChanged(async user => {
-  if (!user) { currentUser = null; currentClass = null; userProfile = null; document.getElementById('authScreen').style.display = 'flex'; document.getElementById('userBar').style.display = 'none'; document.getElementById('syncBadge').style.display = 'none'; return; }
+  if (!user) { currentUser = null; currentClass = null; userProfile = null; document.getElementById('authScreen').style.display = 'flex'; document.getElementById('setupScreen').style.display = 'none'; document.getElementById('userBar').style.display = 'none'; document.getElementById('syncBadge').style.display = 'none'; return; }
   currentUser = user;
-  const profileDoc = await db.collection('users').doc(user.uid).get();
-  if (!profileDoc.exists) { showAuthMsg('❌ Tài khoản chưa được cấu hình.', 'error'); await auth.signOut(); return; }
-  const profile = profileDoc.data();
+
+  // Load profile (có thể chưa tồn tại)
+  let profile = null;
+  try {
+    const profileDoc = await db.collection('users').doc(user.uid).get();
+    profile = profileDoc.exists ? profileDoc.data() : null;
+  } catch (err) { console.warn('Profile load error:', err); }
+
+  // Nếu chưa có profile → vẫn cho tiếp tục nếu là Super Admin
+  if (!profile && !isSuperAdminUser()) {
+    userProfile = { email: user.email, status: 'approved', role: 'owner' };
+    document.getElementById('authScreen').style.display = 'none';
+    document.getElementById('userBar').style.display = 'flex';
+    document.getElementById('syncBadge').style.display = 'flex';
+    document.getElementById('userEmail').textContent = user.email;
+    document.getElementById('userAvatar').textContent = (user.email || '?')[0].toUpperCase();
+    showSetupScreen();
+    return;
+  }
+  profile = profile || { email: user.email, status: 'approved', role: 'owner' };
+
   if (profile.status === 'pending') { document.getElementById('authScreen').style.display = 'flex'; showAuthMsg('⏳ TÀI KHOẢN ĐANG CHỜ DUYỆT', 'error'); await auth.signOut(); return; }
   if (profile.status === 'rejected') { document.getElementById('authScreen').style.display = 'flex'; showAuthMsg('❌ TÀI KHOẢN ĐÃ BỊ KHÓA.', 'error'); await auth.signOut(); return; }
+
   userProfile = profile;
   document.getElementById('authScreen').style.display = 'none';
   document.getElementById('userBar').style.display = 'flex';
   document.getElementById('syncBadge').style.display = 'flex';
   document.getElementById('userEmail').textContent = user.email;
   document.getElementById('userAvatar').textContent = (user.email || '?')[0].toUpperCase();
-  const classId = userProfile.classId || userProfile.pendingClassId || userProfile.currentClassId;
-  if (!classId) { showAuthMsg('❌ Tài khoản chưa được gán lớp.', 'error'); await auth.signOut(); return; }
+
+  const classId = profile.classId || profile.pendingClassId || profile.currentClassId;
+  if (!classId) {
+    document.getElementById('setupScreen').style.display = 'flex';
+    return;
+  }
+
   const ok = await loadClassFromCloud(classId);
-  if (!ok) return;
+  if (!ok) {
+    document.getElementById('setupScreen').style.display = 'flex';
+    showSetupMsg('⚠️ Không tải được lớp "' + classId + '". Tạo lớp mới hoặc nhập lại mã lớp.', 'error');
+    return;
+  }
+  document.getElementById('setupScreen').style.display = 'none';
   renderAllUI();
   toast('✅ Đăng nhập thành công!', '#10b981');
 });
 
+/* ═══════════ SETUP: TẠO / THAM GIA LỚP ═══════════ */
+function showSetupScreen(msg) {
+  document.getElementById('setupScreen').style.display = 'flex';
+  switchSetupTab('create');
+  if (msg) showSetupMsg(msg, 'error');
+}
+function switchSetupTab(tab) {
+  document.getElementById('setupCreatePanel').style.display = tab === 'create' ? 'block' : 'none';
+  document.getElementById('setupJoinPanel').style.display = tab === 'join' ? 'block' : 'none';
+  const tc = document.getElementById('tabCreate'), tj = document.getElementById('tabJoin');
+  if (tab === 'create') {
+    tc.style.background = 'linear-gradient(135deg,#10b981,#059669)';
+    tj.style.background = 'linear-gradient(135deg,#f8fafc,#e2e8f0)';
+    tj.style.color = '#475569';
+  } else {
+    tj.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
+    tc.style.background = 'linear-gradient(135deg,#f8fafc,#e2e8f0)';
+    tc.style.color = '#475569';
+  }
+}
+function showSetupMsg(text, type) {
+  const el = document.getElementById('setupMsg');
+  el.textContent = text;
+  el.className = 'auth-msg ' + (type || 'error');
+}
+
+async function createNewClassSetup() {
+  const className = document.getElementById('setupClassName').value.trim();
+  const school = document.getElementById('setupSchool').value.trim();
+  const teacher = document.getElementById('setupTeacher').value.trim();
+  const year = document.getElementById('setupYear').value.trim() || new Date().getFullYear() + '-' + (new Date().getFullYear()+1);
+
+  if (!className) { showSetupMsg('❌ Nhập tên lớp!', 'error'); return; }
+
+  // Tạo class ID từ UID (unique, không trùng)
+  const classId = 'LOP' + String(currentUser.uid).slice(0, 6).toUpperCase();
+  const myUid = currentUser.uid;
+
+  try {
+    showSetupMsg('⏳ Đang tạo lớp...', 'success');
+
+    // Tạo doc lớp
+    await db.collection('classes').doc(classId).set({
+      ownerId: myUid,
+      name: className,
+      members: { [myUid]: { role: 'owner', email: currentUser.email } },
+      config: { className, school, teacher, year },
+      students: [], logs: [], scores: [], collects: [], exps: [],
+      punishments: [], teams: [], duties: [], trash: [], randomHistory: [],
+      customCCTypes: {},
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+
+    // Tạo / cập nhật user profile
+    await db.collection('users').doc(myUid).set({
+      email: currentUser.email,
+      role: 'owner',
+      status: 'approved',
+      classId: classId
+    }, { merge: true });
+
+    showSetupMsg('✅ Đã tạo lớp ' + classId + '! Đang tải...', 'success');
+
+    userProfile = { email: currentUser.email, role: 'owner', status: 'approved', classId: classId };
+    const ok = await loadClassFromCloud(classId);
+    if (!ok) { showSetupMsg('❌ Không tải được lớp vừa tạo!', 'error'); return; }
+    document.getElementById('setupScreen').style.display = 'none';
+    renderAllUI();
+    toast('🎉 Đã tạo lớp "' + className + '" (' + classId + ')!', '#10b981');
+  } catch (err) {
+    console.error('Create class error:', err);
+    showSetupMsg('❌ Lỗi: ' + (err.message || err.code || 'Không tạo được lớp'), 'error');
+  }
+}
+
+async function joinExistingClass() {
+  const classId = document.getElementById('setupJoinClassId').value.trim().toUpperCase();
+  if (!classId) { showSetupMsg('❌ Nhập mã lớp!', 'error'); return; }
+  try {
+    showSetupMsg('⏳ Đang tham gia...', 'success');
+    const doc = await db.collection('classes').doc(classId).get();
+    if (!doc.exists) { showSetupMsg('❌ Mã lớp "' + classId + '" không tồn tại!', 'error'); return; }
+
+    const myUid = currentUser.uid;
+    await db.collection('users').doc(myUid).set({
+      email: currentUser.email,
+      role: 'viewer',
+      status: 'approved',
+      classId: classId
+    }, { merge: true });
+
+    userProfile = { email: currentUser.email, role: 'viewer', status: 'approved', classId: classId };
+    const ok = await loadClassFromCloud(classId);
+    if (!ok) { showSetupMsg('❌ Không tải được lớp!', 'error'); return; }
+    document.getElementById('setupScreen').style.display = 'none';
+    renderAllUI();
+    toast('🔗 Đã tham gia lớp ' + classId + '!', '#10b981');
+  } catch (err) {
+    console.error('Join class error:', err);
+    showSetupMsg('❌ Lỗi: ' + (err.message || err.code || 'Không tham gia được'), 'error');
+  }
+}
+  
 /* ═══════════ RENDER ALL ═══════════ */
 function renderAllUI() {
   if (!currentClass) return;
